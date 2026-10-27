@@ -1,0 +1,46 @@
+name: Verificar WarMetrics
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: Proyecto1/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Backend
+        run: mvn -B -ntp -f Proyecto1/pom.xml verify
+      - name: Frontend
+        run: node --test tests/frontend.test.cjs
+  container:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Construir imagen con Java 21 y ejecutar las pruebas Maven
+        run: docker build -t warmetrics:verify .
+      - name: Comprobar el contenedor
+        shell: bash
+        run: |
+          trap 'docker logs warmetrics-verify; docker rm -f warmetrics-verify >/dev/null' EXIT
+          docker run --detach --name warmetrics-verify \
+            --publish 127.0.0.1:8080:8080 \
+            --env DB_URL=jdbc:h2:mem:container-smoke \
+            warmetrics:verify
+          node tests/smoke-deployment.cjs http://127.0.0.1:8080 --wait

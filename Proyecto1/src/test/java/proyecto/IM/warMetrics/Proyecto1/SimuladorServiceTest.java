@@ -1,59 +1,129 @@
 package proyecto.IM.warMetrics.Proyecto1;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import org.junit.jupiter.api.BeforeEach;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import proyecto.IM.warMetrics.Proyecto1.Service.SimuladorService; 
+import proyecto.IM.warMetrics.Proyecto1.Service.SimuladorService;
 import proyecto.IM.warMetrics.Proyecto1.dto.AtaqueRequest;
-import proyecto.IM.warMetrics.Proyecto1.dto.ResultadoResponse;
-import proyecto.IM.warMetrics.Proyecto1.repository.HistorialTiradaRepository;
-import proyecto.IM.warMetrics.Proyecto1.repository.UsuarioRepository;
 
-@ExtendWith(MockitoExtension.class)
 class SimuladorServiceTest {
+    private final SimuladorService simulador = new SimuladorService();
 
-    @Mock
-    private UsuarioRepository usuarioRepository;
-
-    @Mock
-    private HistorialTiradaRepository historialRepository;
-
-    // ERROR CORREGIDO 1: Inyectamos el servicio real, NO el test
-    @InjectMocks
-    private SimuladorService simuladorService; 
-
-    private AtaqueRequest requestBasico;
-
-    @BeforeEach
-    void setUp() {
-        requestBasico = new AtaqueRequest();
-        requestBasico.setNumAtaques(10);
-        requestBasico.setImpactoX(3);           // Impacta a 3+
-        requestBasico.setRepeticionImpacto("NONE");
-        requestBasico.setEspecialSeisImpacto("NONE");
-        requestBasico.setHerirX(4);             // Hiere a 4+
-        requestBasico.setRepeticionHerir("NONE");
-        requestBasico.setSeisHeridaInsalvable(false);
-        requestBasico.setSalvacionX(5);         // Salva a 5+
-        requestBasico.setDanoPorAtaque(1);      // Daño 1
-        requestBasico.setNoHayDolorX(0);        // Sin FNP
+    private AtaqueRequest basico() {
+        var req = new AtaqueRequest();
+        req.setNumAtaques(10);
+        req.setDanoPorAtaque(1);
+        req.setImpactoX(3);
+        req.setHerirX(4);
+        req.setSalvacionX(5);
+        return req;
     }
 
     @Test
-    void ejecutarSimulacion_CalculaMediaCorrectamente() {
-        // ERROR CORREGIDO 2: Llamamos a la variable simuladorService (en minúscula)
-        ResultadoResponse resultado = simuladorService.ejecutarSimulacion(requestBasico);
+    void casoBasico() {
+        assertEquals(2.22, simulador.ejecutarSimulacion(basico()).getDañoMedioEstadistico(), 0.001);
+    }
 
-        // Verificamos que la media matemática exacta sea 2.22 (con margen de 0.01 por los decimales)
-        assertEquals(2.22, resultado.getDañoMedioEstadistico(), 0.01, "La media estadística no coincide con la fórmula esperada.");
+    @Test
+    void repetirFallosNoEquivaleARepetirTodoSalvoSeises() {
+        var req = basico();
+        req.setNumAtaques(36);
+        req.setRepeticionImpacto("ALL");
+        req.setEspecialSeisImpacto("EXTRA_HIT");
+        req.setHerirX(2);
+        req.setSalvacionX(7);
+        assertEquals(33.33, simulador.ejecutarSimulacion(req).getDañoMedioEstadistico(), 0.001);
+    }
 
-        // Verificamos que la tirada aleatoria no sea negativa (ya que no podemos predecir el número exacto)
-        assertTrue(resultado.getDañoAleatorio() >= 0, "El daño aleatorio no debería ser negativo.");
+    @Test
+    void repetirUnosConUmbralUnoNoSuperaElCienPorCien() {
+        var req = basico();
+        req.setNumAtaques(36);
+        req.setImpactoX(1);
+        req.setRepeticionImpacto("ONES");
+        req.setHerirX(2);
+        req.setSalvacionX(7);
+        assertEquals(30.0, simulador.ejecutarSimulacion(req).getDañoMedioEstadistico(), 0.001);
+    }
+
+    @Test
+    void redondeaMedioCentimoHaciaArriba() {
+        var req = basico();
+        req.setNumAtaques(6);
+        req.setDanoPorAtaque(2);
+        req.setImpactoX(4);
+        req.setRepeticionImpacto("ALL");
+        req.setHerirX(3);
+        req.setRepeticionHerir("ONES");
+        req.setSalvacionX(2);
+        req.setNoHayDolorX(0);
+        req.setSeisHeridaInsalvable(true);
+        assertEquals(2.63, simulador.ejecutarSimulacion(req).getDañoMedioEstadistico(), 0.001);
+    }
+
+    @Test
+    void mediaCoincideConEnumeracionDeLasCarasDelDado() {
+        String[] repeticiones = {"NONE", "ONES", "ALL"};
+        String[] especiales = {"NONE", "EXTRA_HIT", "AUTO_WOUND"};
+        for (int impacto = 1; impacto <= 6; impacto++)
+        for (int herir = 1; herir <= 6; herir++)
+        for (String repImpacto : repeticiones)
+        for (String repHerir : repeticiones)
+        for (String especial : especiales)
+        for (boolean devastadoras : new boolean[]{false, true})
+        for (int salvacion : new int[]{2, 5, 7})
+        for (int fnp : new int[]{0, 5}) {
+            var req = basico();
+            req.setNumAtaques(6);
+            req.setDanoPorAtaque(2);
+            req.setImpactoX(impacto);
+            req.setHerirX(herir);
+            req.setRepeticionImpacto(repImpacto);
+            req.setRepeticionHerir(repHerir);
+            req.setEspecialSeisImpacto(especial);
+            req.setSeisHeridaInsalvable(devastadoras);
+            req.setSalvacionX(salvacion);
+            req.setNoHayDolorX(fnp);
+            double esperado = mediaEnumerada(req);
+            var resultado = simulador.ejecutarSimulacion(req);
+            assertEquals(esperado, resultado.getDañoMedioEstadistico(), 0.005000001,
+                "impacto=" + impacto + ", herir=" + herir + ", " + repImpacto + "/" + repHerir + "/" + especial);
+            assertTrue(resultado.getDañoAleatorio() >= 0 && resultado.getDañoAleatorio() <= 24);
+        }
+    }
+
+    // Enumeración independiente de las 36 parejas de tirada inicial y repetición.
+    private double[] distribucion(int umbral, String repeticion) {
+        double[] prob = new double[7];
+        for (int primero = 1; primero <= 6; primero++)
+        for (int segundo = 1; segundo <= 6; segundo++) {
+            boolean repetir = ("ONES".equals(repeticion) && primero == 1)
+                || ("ALL".equals(repeticion) && primero < umbral);
+            prob[repetir ? segundo : primero] += 1.0 / 36.0;
+        }
+        return prob;
+    }
+
+    private double mediaEnumerada(AtaqueRequest req) {
+        double[] impactos = distribucion(req.getImpactoX(), req.getRepeticionImpacto());
+        double[] heridas = distribucion(req.getHerirX(), req.getRepeticionHerir());
+        double media = 0;
+        for (int impacto = req.getImpactoX(); impacto <= 6; impacto++) {
+            boolean automatica = impacto == 6 && "AUTO_WOUND".equals(req.getEspecialSeisImpacto());
+            int cantidad = impacto == 6 && "EXTRA_HIT".equals(req.getEspecialSeisImpacto()) ? 2 : 1;
+            double heridasQuePasan = 0;
+            if (automatica) {
+                heridasQuePasan = (req.getSalvacionX() - 1.0) / 6;
+            } else {
+                for (int herida = req.getHerirX(); herida <= 6; herida++) {
+                    double falloSalvacion = herida == 6 && req.isSeisHeridaInsalvable()
+                        ? 1 : (req.getSalvacionX() - 1.0) / 6;
+                    heridasQuePasan += heridas[herida] * falloSalvacion;
+                }
+            }
+            media += impactos[impacto] * cantidad * heridasQuePasan;
+        }
+        double falloFnp = req.getNoHayDolorX() == 0 || req.getNoHayDolorX() == 7
+            ? 1 : (req.getNoHayDolorX() - 1.0) / 6;
+        return req.getNumAtaques() * req.getDanoPorAtaque() * media * falloFnp;
     }
 }

@@ -1,213 +1,127 @@
-// --- VARIABLES GLOBALES ---
-let ultimoResultado = null; // Guardará el último cálculo hecho
+let ultimoResultado = null;
 
-/**
- * 1. SIMULADOR: Ejecuta la simulación enviando los datos al backend
- */
-async function ejecutarSimulacion() {
-
-    // 1. Recogemos los valores con los nombres exactos que espera tu DTO de Java
-    const datosSimulacion = {
-        numAtaques: parseInt(document.getElementById('numAtaques')?.value) || 0,
-        danoPorAtaque: parseInt(document.getElementById('dañoPorAtaque')?.value) || 1, // 'dano' sin ñ
-        impactoX: parseInt(document.getElementById('impactoX')?.value) || 4,
-        herirX: parseInt(document.getElementById('herirX')?.value) || 4, // Usamos herirX en lugar de fuerza
-        salvacionX: parseInt(document.getElementById('salvacionX')?.value) || 7, 
-        noHayDolorX: parseInt(document.getElementById('noHayDolorX')?.value) || 7,
-        
-        // Opciones de repetición y reglas especiales
-        repeticionImpacto: document.getElementById('repeticionImpacto')?.value || 'NONE',
-        especialSeisImpacto: document.getElementById('especialSeisImpacto')?.value || 'NONE',
-        repeticionHerir: document.getElementById('repeticionHerir')?.value || 'NONE',
-        seisHeridaInsalvable: document.getElementById('seisHeridaInsalvable')?.checked || false
+function idsPerfil(armeria = false) {
+    return armeria ? {
+        numAtaques: 'nueva-unidad-ataques', danoPorAtaque: 'nueva-unidad-dano',
+        impactoX: 'nueva-unidad-impacto', herirX: 'nueva-unidad-herir',
+        salvacionX: 'nueva-unidad-salvacion', noHayDolorX: 'nueva-unidad-fnp',
+        repeticionImpacto: 'nueva-unidad-rep-impacto', repeticionHerir: 'nueva-unidad-rep-herir',
+        especialSeisImpacto: 'nueva-unidad-esp-impacto', seisHeridaInsalvable: 'nueva-unidad-devastadoras'
+    } : {
+        numAtaques: 'numAtaques', danoPorAtaque: 'dañoPorAtaque', impactoX: 'impactoX',
+        herirX: 'herirX', salvacionX: 'salvacionX', noHayDolorX: 'noHayDolorX',
+        repeticionImpacto: 'repeticionImpacto', repeticionHerir: 'repeticionHerir',
+        especialSeisImpacto: 'especialSeisImpacto', seisHeridaInsalvable: 'seisHeridaInsalvable'
     };
+}
 
+function leerPerfil(armeria = false) {
+    const result = {};
+    for (const [name, id] of Object.entries(idsPerfil(armeria))) {
+        const field = document.getElementById(id);
+        result[name] = field.type === 'checkbox' ? field.checked
+            : field.type === 'number' ? Number(field.value) : field.value;
+    }
+    return result;
+}
+
+async function ejecutarSimulacion() {
+    if (!validarCampos(Object.values(idsPerfil()))) return;
+    const button = document.getElementById('btn-simular');
+    button.disabled = true;
+    ultimoResultado = null;
+    gestionarPanelGuardado();
     try {
-        const response = await fetch(`${API_BASE}/v1/combate/simular`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(datosSimulacion)
-        });
-
-        if (!response.ok) {
-            throw new Error(`Error en el servidor: ${response.status}`);
-        }
-
-        const resultado = await response.json();
-
-        reproducirSonidoTerminal();
-
-
-        ultimoResultado = resultado; 
-
-        // 3. Mostramos los resultados reales
+        const perfil = leerPerfil();
+        const resultado = await apiRequest('/v1/combate/simular', { method: 'POST', body: perfil });
         mostrarResultadosEnPantalla(resultado);
-        
-        // 4. Actualizamos el historial rápido de la derecha
-        actualizarResumenRapido(datosSimulacion, resultado);
-        gestionarPanelGuardado(); 
-
+        ultimoResultado = resultado;
+        actualizarResumenRapido(perfil, resultado);
+        gestionarPanelGuardado();
+        reproducirSonidoTerminal();
     } catch (error) {
-        console.error("Error durante la simulación:", error);
-        mostrarNotificacion("Error de cálculo: Verifica los datos introducidos", "error"); 
+        mostrarNotificacion(error.message, 'error');
+    } finally {
+        button.disabled = false;
     }
 }
 
-/**
- * Pinta los números grandes en el centro de la pantalla
- */
+function valoresResultado(res) {
+    return {
+        real: res.dañoAleatorio ?? res.danoAleatorio,
+        media: res.dañoMedioEstadistico ?? res.danoMedioEstadistico
+    };
+}
+
 function mostrarResultadosEnPantalla(res) {
-    // 1. Hacemos visible el contenedor de resultados
-    const contenedor = document.getElementById('contenedorResultados');
-    if (contenedor) {
-        contenedor.style.display = 'flex'; 
-    }
-
-    // 2. Localizamos las pantallas numéricas
-    const divReal = document.getElementById('resultado-aleatorio');
-    const divMedia = document.getElementById('resultado-estadistico');
-
-    // 3. Pintamos los datos (Contemplamos "dano" y "daño" por compatibilidad con el backend)
-    const valorReal = res.dañoAleatorio !== undefined ? res.dañoAleatorio : res.danoAleatorio;
-    const valorMedia = res.dañoMedioEstadistico !== undefined ? res.dañoMedioEstadistico : res.danoMedioEstadistico;
-
-    if (divReal) divReal.innerText = valorReal;
-    if (divMedia) divMedia.innerText = valorMedia.toFixed(2);
-    
-    // 4. Animación de pulso neón
-    const displays = document.querySelectorAll('.display-resultados');
-    displays.forEach(display => {
-        display.style.animation = 'none';
-        display.offsetHeight; // Truco para reiniciar la animación
-        display.style.animation = 'pulse-neon 0.5s ease-out';
-    });
+    const { real, media } = valoresResultado(res);
+    if (!Number.isFinite(real) || !Number.isFinite(media)) throw new Error('El servidor devolvió un resultado no válido.');
+    document.getElementById('contenedorResultados').style.display = 'flex';
+    document.getElementById('resultado-aleatorio').textContent = real;
+    document.getElementById('resultado-estadistico').textContent = media.toFixed(2);
 }
 
-/**
- * 2. FUNCIONES AUXILIARES DEL SIMULADOR
- */
 function gestionarPanelGuardado() {
-    // Validamos que usuarioActual exista (viene de scriptLogin.js)
-    if (typeof usuarioActual !== 'undefined' && usuarioActual !== null) {
-        const panelGuardar = document.getElementById('panel-guardar-tirada');
-        if (panelGuardar) {
-            panelGuardar.classList.remove('pantalla-oculta');
-            panelGuardar.style.display = 'block'; 
-        }
-    }
+    const panel = document.getElementById('panel-guardar-tirada');
+    panel.classList.toggle('pantalla-oculta', !usuarioActual || !ultimoResultado);
 }
 
-function actualizarResumenRapido(payload, resultado) {
-    const quickStats = document.getElementById('quick-stats');
-    if (quickStats) {
-        const nuevaEntrada = document.createElement('div');
-        nuevaEntrada.className = "resumen-entrada"; 
-        nuevaEntrada.innerHTML = `
-            <strong>${payload.numAtaques} Atqs:</strong> 
-            <span style="color:var(--accent)">${resultado.dañoAleatorio}</span> 
-            <small>(Med: ${resultado.dañoMedioEstadistico})</small>
-        `;
-        quickStats.prepend(nuevaEntrada);
-        
-        const placeholder = quickStats.querySelector('p');
-        if (placeholder) placeholder.remove();
-    }
+function actualizarResumenRapido(perfil, resultado) {
+    const list = document.getElementById('quick-stats');
+    list.querySelector('p')?.remove();
+    const entry = document.createElement('div');
+    const { real, media } = valoresResultado(resultado);
+    entry.className = 'resumen-entrada';
+    entry.textContent = perfil.numAtaques + ' Atqs: ' + real + ' (Med: ' + media.toFixed(2) + ')';
+    list.prepend(entry);
+    while (list.children.length > 20) list.lastElementChild.remove();
 }
 
-/**
- * 3. VERIFICACIÓN DE ESTADO DEL SERVIDOR
- */
-window.onload = async function() {
+window.addEventListener('load', async () => {
+    const status = document.getElementById('motor-status');
     try {
-        const response = await fetch(`${API_BASE}/v1/combate/status`); 
-        const statusElement = document.getElementById('motor-status');
-        if (response.ok && statusElement) {
-            statusElement.innerText = "ONLINE";
-            statusElement.style.color = "#2ecc71";
-        }
-    } catch (error) {
-        const statusElement = document.getElementById('motor-status');
-        if (statusElement) {
-            statusElement.innerText = "OFFLINE";
-            statusElement.style.color = "#e74c3c";
-        }
+        await apiRequest('/v1/combate/status');
+        status.textContent = 'ONLINE';
+        status.style.color = '#2ecc71';
+    } catch {
+        status.textContent = 'OFFLINE';
+        status.style.color = '#e74c3c';
     }
-};
+});
 
-/**
- * 4. NAVEGACIÓN ENTRE PANTALLAS
- */
 function cambiarPantalla(destino) {
-    const pantallasProtegidas = ['unidades', 'historial'];
-    const estaLogueado = (typeof usuarioActual !== 'undefined' && usuarioActual !== null);
-
-    if (pantallasProtegidas.includes(destino) && !estaLogueado) {
-        mostrarNotificacion("⚠️ Debes iniciar sesión para acceder a esta sección.", "error");
+    if (['unidades', 'historial'].includes(destino) && !usuarioActual) {
+        mostrarNotificacion('Inicia sesión para acceder a esta sección.', 'error');
         return;
     }
-
-    activarEfectoCambioPantalla();
-
-    document.querySelectorAll('.pantalla-seccion, #pantalla-simulador, #pantalla-unidades, #pantalla-historial').forEach(el => {
-        el.classList.remove('pantalla-activa');
-        el.classList.add('pantalla-oculta');
+    document.querySelectorAll('.pantalla-seccion').forEach(el => {
+        el.classList.toggle('pantalla-oculta', el.id !== 'pantalla-' + destino);
+        el.classList.toggle('pantalla-activa', el.id === 'pantalla-' + destino);
     });
-
-    const pantallaDestino = document.getElementById(`pantalla-${destino}`);
-    if (pantallaDestino) {
-        pantallaDestino.classList.remove('pantalla-oculta');
-        pantallaDestino.classList.add('pantalla-activa');
-    }
-
     document.querySelectorAll('.sidebar ul li a').forEach(el => el.classList.remove('active'));
-    const menuDestino = document.getElementById(`menu-${destino}`);
-    if (menuDestino) menuDestino.classList.add('active');
-
-    if (estaLogueado) {
-        if (destino === 'unidades') cargarTarjetasUnidad();
-        if (destino === 'historial') cargarHistorialDefinitivo();
-    }
+    document.getElementById('menu-' + destino)?.classList.add('active');
+    document.querySelector('.left-sidebar')?.classList.remove('active');
+    activarEfectoCambioPantalla();
+    if (destino === 'unidades') cargarTarjetasUnidad();
+    if (destino === 'historial') cargarHistorialDefinitivo();
 }
 
-// Efecto visual de transición entre pantallas
 function activarEfectoCambioPantalla() {
     const contentArea = document.querySelector('.content-area');
     if (!contentArea) return;
-
     reproducirSonidoTerminal();
-
     contentArea.classList.remove('hud-transition');
     void contentArea.offsetWidth;
     contentArea.classList.add('hud-transition');
-
-    setTimeout(() => {
-        contentArea.classList.remove('hud-transition');
-    }, 500);
+    setTimeout(() => contentArea.classList.remove('hud-transition'), 500);
 }
-
 
 function reproducirSonidoTerminal() {
     const audio = new Audio('/sounds/750435__rescopicsound__ui-click-menu-modern-interface-select-small-01.mp3');
     audio.volume = 0.3;
-
-    audio.play().catch(() => {
-        // Silenciamos el error para que no ensucie la consola durante desarrollo
-    });
+    audio.play().catch(() => {});
 }
 
-// Integración con el menú móvil (Paso 19)
 function toggleSidebar() {
-    document.querySelector('.left-sidebar').classList.toggle('active');
-}
-
-/**
- * Utilidad para mostrar mensajes elegantes estilo Toast
- */
-function mostrarNotificacion(mensaje, tipo) {
-    console.log(`[${tipo.toUpperCase()}] ${mensaje}`);
-    const msjBox = document.getElementById('auth-mensaje');
-    if (msjBox) {
-        msjBox.innerText = mensaje;
-        msjBox.style.color = tipo === 'error' ? '#ff4d4d' : 'var(--accent)';
-    }
+    document.querySelector('.left-sidebar')?.classList.toggle('active');
 }

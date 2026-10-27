@@ -1,171 +1,75 @@
-// =======================================================
-// WAR-METRICS: SISTEMA DE ARCHIVOS Y RUTINAS DE REGISTRO
-// =======================================================
-
 async function enviarGuardado() {
-    const titulo = document.getElementById('save-titulo')?.value?.trim();
-    const notas = document.getElementById('save-notas')?.value?.trim();
-
-    if (!titulo) {
-        alert("Comandante, por favor asigne un título al archivo de batalla.");
-        return;
-    }
-
-    if (typeof ultimoResultado === 'undefined' || !ultimoResultado) {
-        alert("Error: No hay datos en el motor de simulación para guardar.");
-        return;
-    }
-
-    if (typeof usuarioActual === 'undefined' || !usuarioActual || !usuarioActual.id) {
-        alert("Debes iniciar sesión para guardar en los archivos.");
-        return;
-    }
-
-    const valorAleatorio =
-        ultimoResultado.dañoAleatorio !== undefined
-            ? ultimoResultado.dañoAleatorio
-            : ultimoResultado.danoAleatorio;
-
-    const valorMedia =
-        ultimoResultado.dañoMedioEstadistico !== undefined
-            ? ultimoResultado.dañoMedioEstadistico
-            : ultimoResultado.danoMedioEstadistico;
-
-    const payload = {
-        usuarioId: usuarioActual.id,
-        titulo: titulo,
-        notas: notas,
-        aleatorio: valorAleatorio,
-        media: valorMedia
-    };
-
-    console.log("Payload enviado al registro:", payload);
-
+    if (!usuarioActual) return mostrarNotificacion('Inicia sesión para guardar resultados.', 'error');
+    if (!ultimoResultado) return mostrarNotificacion('Realiza una simulación antes de guardar.', 'error');
+    if (!validarCampos(['save-titulo', 'save-notas'])) return;
+    const button = document.getElementById('btn-guardar-tirada');
+    button.disabled = true;
     try {
-        const response = await fetch(`${API_BASE}/historial/guardar`, {
+        const { real, media } = valoresResultado(ultimoResultado);
+        const result = await apiRequest('/historial/guardar', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: {
+                titulo: document.getElementById('save-titulo').value.trim(),
+                notas: document.getElementById('save-notas').value.trim(),
+                aleatorio: real, media
+            }
         });
-
-        if (!response.ok) {
-            const errorTexto = await response.text();
-            console.error("Error al guardar registro:", response.status, errorTexto);
-            alert(`Los servidores de registro han rechazado la petición. Error ${response.status}`);
-            return;
-        }
-
-        alert(`¡Archivo "${titulo}" guardado en los registros!`);
-
-        const panelGuardar = document.getElementById('panel-guardar-tirada');
-        if (panelGuardar) {
-            panelGuardar.classList.remove('pantalla-activa');
-            panelGuardar.classList.add('pantalla-oculta');
-            panelGuardar.style.display = 'none';
-        }
-
+        document.getElementById('panel-guardar-tirada').classList.add('pantalla-oculta');
         document.getElementById('save-titulo').value = '';
         document.getElementById('save-notas').value = '';
-
-        if (typeof cargarHistorialDefinitivo === 'function') {
-            cargarHistorialDefinitivo();
-        }
-
-    } catch (e) {
-        console.error("Error de conexión al guardar registro:", e);
-        alert("Fallo de comunicación con la base de datos imperial.");
+        mostrarNotificacion(result.message);
+    } catch (error) {
+        mostrarNotificacion(error.message, 'error');
+    } finally {
+        button.disabled = false;
     }
 }
 
 async function cargarHistorialDefinitivo() {
-    if (typeof usuarioActual === 'undefined' || !usuarioActual || !usuarioActual.id) return;
-
-    const lista = document.getElementById('historial-completo');
-    if (!lista) return;
-
+    if (!usuarioActual) return;
+    const owner = usuarioActual.id;
+    const list = document.getElementById('historial-completo');
     try {
-        const response = await fetch(`${API_BASE}/historial/usuario/${usuarioActual.id}`);
-
-        if (!response.ok) {
-            throw new Error("Error al descargar los archivos");
+        const tiradas = await apiRequest('/historial');
+        if (usuarioActual?.id !== owner) return;
+        list.replaceChildren();
+        if (!tiradas.length) {
+            const empty = document.createElement('p');
+            empty.textContent = 'El registro está vacío. Guarda una tirada del simulador.';
+            list.append(empty);
         }
-
-        const tiradas = await response.json();
-
-        if (tiradas.length === 0) {
-            lista.innerHTML = `
-                <p style="text-align:center; color:var(--text-muted); font-style: italic;">
-                    El registro está vacío. Realiza tu primera tirada en el simulador.
-                </p>
-            `;
-            return;
+        for (const tirada of tiradas) {
+            const card = document.createElement('article');
+            card.className = 'historial-card glass-panel';
+            const title = document.createElement('h4');
+            title.textContent = tirada.titulo;
+            const date = document.createElement('small');
+            date.textContent = new Date(tirada.fechaCreacion).toLocaleString();
+            const notes = document.createElement('p');
+            notes.className = 'notas-usuario';
+            notes.textContent = tirada.notas || 'Sin notas tácticas adjuntas.';
+            const stats = document.createElement('p');
+            stats.textContent = 'Dado: ' + tirada.danoAleatorio + ' | Media: ' + tirada.danoMedioEstadistico;
+            const button = document.createElement('button');
+            button.className = 'btn-secondary btn-danger';
+            button.type = 'button';
+            button.textContent = 'Eliminar registro';
+            button.addEventListener('click', () => borrarTirada(tirada.id));
+            card.append(title, date, notes, stats, button);
+            list.append(card);
         }
-
-        lista.innerHTML = tiradas.map(t => {
-            const fechaString = new Date(t.fechaCreacion).toLocaleString();
-            const notasHTML = t.notas ? `Notas: <i>${t.notas}</i>` : 'Sin notas tácticas adjuntas.';
-
-            return `
-                <div class="historial-card" style="border: 1px solid var(--border-dark); padding: 15px; margin-bottom: 15px; border-radius: 5px; background: var(--bg-panels); transition: 0.3s;"
-                     onmouseover="this.style.borderColor='var(--accent)'"
-                     onmouseout="this.style.borderColor='var(--border-dark)'">
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-dark); padding-bottom: 8px; margin-bottom: 10px;">
-                        <strong style="color: var(--accent); font-size: 1.1em;">${t.titulo}</strong>
-                        <span style="font-size: 0.75rem; color: var(--text-muted); background: var(--bg-main); padding: 2px 8px; border-radius: 10px;">
-                            ${fechaString}
-                        </span>
-                    </div>
-
-                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0 0 15px 0;">
-                        ${notasHTML}
-                    </p>
-
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; gap: 15px; font-size: 0.95rem; color: var(--text-main); background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px;">
-                            <div>Dado: <strong style="color: #2ecc71;">${t.danoAleatorio}</strong></div>
-                            <div>|</div>
-                            <div>Media: <strong style="color: #3498db;">${t.danoMedioEstadistico}</strong></div>
-                        </div>
-
-                        <button onclick="borrarTirada(${t.id})" style="background: rgba(231, 76, 60, 0.1); border: 1px solid #e74c3c; color: #e74c3c; padding: 5px 15px; border-radius: 3px; cursor: pointer; transition: 0.2s;">
-                            Purgar Archivo
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-    } catch (e) {
-        console.error("Error al recuperar los archivos:", e);
-        lista.innerHTML = `
-            <p style="text-align:center; color:#e74c3c;">
-                Error de conexión. No se pudo cargar el registro.
-            </p>
-        `;
+    } catch (error) {
+        mostrarNotificacion(error.message, 'error');
     }
 }
 
 async function borrarTirada(id) {
-    if (!confirm("¿Confirma que desea purgar este registro de batalla permanentemente?")) return;
-
+    if (!confirm('¿Quieres eliminar este registro de batalla?')) return;
     try {
-        const response = await fetch(`${API_BASE}/historial/${id}`, {
-            method: 'DELETE'
-        });
-
-        if (response.ok) {
-            cargarHistorialDefinitivo();
-        } else {
-            alert("Los servidores imperiales denegaron la purga.");
-        }
-    } catch (e) {
-        console.error("Error al intentar purgar el archivo:", e);
-        alert("Fallo de conexión al intentar eliminar el archivo.");
+        await apiRequest('/historial/' + id, { method: 'DELETE' });
+        await cargarHistorialDefinitivo();
+        mostrarNotificacion('Registro eliminado.');
+    } catch (error) {
+        mostrarNotificacion(error.message, 'error');
     }
 }
-
-// Hacemos disponibles las funciones para los onclick del HTML
-window.enviarGuardado = enviarGuardado;
-window.cargarHistorialDefinitivo = cargarHistorialDefinitivo;
-window.borrarTirada = borrarTirada;

@@ -1,55 +1,71 @@
 package proyecto.IM.warMetrics.Proyecto1.controller;
 
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.*;
 import proyecto.IM.warMetrics.Proyecto1.Service.AuthService;
+import proyecto.IM.warMetrics.Proyecto1.Service.CurrentUserService;
+import proyecto.IM.warMetrics.Proyecto1.config.SessionUser;
+import proyecto.IM.warMetrics.Proyecto1.dto.LoginRequest;
 import proyecto.IM.warMetrics.Proyecto1.dto.RegistroRequest;
+import proyecto.IM.warMetrics.Proyecto1.model.Usuario;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "*") // Para que el frontend pueda conectar sin bloqueos
 public class AuthController {
-
     private final AuthService authService;
+    private final CurrentUserService currentUser;
+    private final SecurityContextRepository contextRepository;
+    private final SessionAuthenticationStrategy sessionStrategy;
 
-    // Eliminamos la inyección de JwtService
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, CurrentUserService currentUser,
+            SecurityContextRepository contextRepository, SessionAuthenticationStrategy sessionStrategy) {
         this.authService = authService;
+        this.currentUser = currentUser;
+        this.contextRepository = contextRepository;
+        this.sessionStrategy = sessionStrategy;
     }
 
-    // Endpoint para registro de usuarios
-    // Recibe un RegistroRequest con username, email y password, y devuelve un mensaje de éxito o error
+    @GetMapping("/csrf")
+    public Map<String, String> csrf(CsrfToken token) {
+        return Map.of("token", token.getToken(), "headerName", token.getHeaderName());
+    }
+
     @PostMapping("/registro")
-    public String registrar(@Valid @RequestBody RegistroRequest request) {
-        // El @Valid activa las reglas del DTO (@Email, @Pattern, etc.)
-        return authService.registrarUsuario(request);
+    public ResponseEntity<Map<String, String>> registrar(@Valid @RequestBody RegistroRequest request) {
+        authService.registrarUsuario(request);
+        return ResponseEntity.status(201).body(Map.of("message", "Usuario registrado con éxito. Ya puedes iniciar sesión."));
     }
 
-    // Endpoint para login (VERSIÓN SIN JWT)
-    // Recibe un LoginRequest con username y password, y devuelve un JSON con id y username si es correcto    
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody proyecto.IM.warMetrics.Proyecto1.dto.LoginRequest request) {
-        try {
-            proyecto.IM.warMetrics.Proyecto1.model.Usuario usuario = authService.login(request.getUsername(), request.getPassword());
+    public SessionUser login(@Valid @RequestBody LoginRequest request,
+            HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
+        Usuario usuario = authService.login(request.getUsername(), request.getPassword());
+        SessionUser user = new SessionUser(usuario.getId(), usuario.getUsername());
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(user, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        sessionStrategy.onAuthentication(authentication, servletRequest, servletResponse);
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        contextRepository.saveContext(context, servletRequest, servletResponse);
+        return user;
+    }
 
-            // Devolvemos solo los datos básicos al frontend (sin la contraseña y sin Token)
-            Map<String, Object> response = new HashMap<>();
-            response.put("id", usuario.getId());
-            response.put("username", usuario.getUsername());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Error: " + e.getMessage());
-        }
+    @GetMapping("/me")
+    public SessionUser me(Authentication authentication) {
+        Usuario user = currentUser.require(authentication);
+        return new SessionUser(user.getId(), user.getUsername());
     }
 }

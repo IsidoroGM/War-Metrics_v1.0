@@ -1,50 +1,23 @@
 package proyecto.IM.warMetrics.Proyecto1.Service;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import org.springframework.stereotype.Service;
 
 import proyecto.IM.warMetrics.Proyecto1.dto.AtaqueRequest;
-import proyecto.IM.warMetrics.Proyecto1.dto.GuardarTiradasRequest; // <-- IMPORTACIÓN NECESARIA AÑADIDA
 import proyecto.IM.warMetrics.Proyecto1.dto.ResultadoResponse;
-import proyecto.IM.warMetrics.Proyecto1.model.HistorialTirada;
-import proyecto.IM.warMetrics.Proyecto1.model.Usuario;
-import proyecto.IM.warMetrics.Proyecto1.repository.HistorialTiradaRepository;
-import proyecto.IM.warMetrics.Proyecto1.repository.UsuarioRepository;
 
 @Service
 public class SimuladorService {
 
-    private final UsuarioRepository usuarioRepository;
-    private final HistorialTiradaRepository historialRepository;
-
-    public SimuladorService(UsuarioRepository usuarioRepository, HistorialTiradaRepository historialRepository) {
-        this.usuarioRepository = usuarioRepository;
-        this.historialRepository = historialRepository;
-    }
-
     public ResultadoResponse ejecutarSimulacion(AtaqueRequest req) {
         // Ejecutamos los cálculos
         int aleatorio = calcularHeridasAleatorias(req);
-        double media = calcularMediaEstadistica(req);
-        double mediaRedondeada = Math.round(media * 100.0) / 100.0;
+        double mediaRedondeada = calcularMediaEstadistica(req);
 
         return new ResultadoResponse(aleatorio, mediaRedondeada);
-    }
-
-    // --- EL MÉTODO QUE FALTABA PARA EL HISTORIAL ---
-    public void guardarEnHistorial(GuardarTiradasRequest req) {
-        Usuario usuario = usuarioRepository.findById(req.getUsuarioId())
-                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-
-        HistorialTirada registro = new HistorialTirada(
-            req.getTitulo(), 
-            req.getNotas(), 
-            req.getAleatorio(), 
-            req.getMedia(), 
-            usuario
-        );
-        historialRepository.save(registro);
     }
 
     // ------------------- SIMULACIÓN REAL (ALEATORIA) -------------------
@@ -126,80 +99,52 @@ public class SimuladorService {
         return dado;
     }
 
-    // ------------------- MEDIA ESTADÍSTICA -------------------
+    // Cada resultado tiene 36 parejas equiprobables de tirada inicial y repetición.
+    // Trabajar con recuentos enteros evita probabilidades > 1 y errores de redondeo.
     private double calcularMediaEstadistica(AtaqueRequest req) {
-        double ataques = req.getNumAtaques();
-        String repImp = req.getRepeticionImpacto() != null ? req.getRepeticionImpacto() : "NONE";
-        String repHer = req.getRepeticionHerir() != null ? req.getRepeticionHerir() : "NONE";
-
-        // 1. Impactos
-        double probImpactoBase = calcularProbBase(req.getImpactoX());
-        double probImpactoTotal = calcularProbConRepeticion(probImpactoBase, repImp);
-        double probSeisImpacto = calcularProbSeis(repImp);
-
-        double impactosNormales = ataques * probImpactoTotal;
-        double heridasAutomaticas = 0.0;
-
-        if ("EXTRA_HIT".equals(req.getEspecialSeisImpacto())) {
-            impactosNormales += ataques * probSeisImpacto;
-        } else if ("AUTO_WOUND".equals(req.getEspecialSeisImpacto())) {
-            heridasAutomaticas += ataques * probSeisImpacto;
-            impactosNormales -= ataques * probSeisImpacto;
+        int impactos = contarExitos(req.getImpactoX(), req.getRepeticionImpacto());
+        int seisesImpacto = contarSeises(req.getImpactoX(), req.getRepeticionImpacto());
+        int automaticas = 0;
+        if ("EXTRA_HIT".equals(req.getEspecialSeisImpacto())) impactos += seisesImpacto;
+        if ("AUTO_WOUND".equals(req.getEspecialSeisImpacto())) {
+            automaticas = seisesImpacto;
+            impactos -= seisesImpacto;
         }
-
-        // 2. Heridas
-        double probHeridaBase = calcularProbBase(req.getHerirX());
-        double probHeridaTotal = calcularProbConRepeticion(probHeridaBase, repHer);
-        double probSeisHerida = calcularProbSeis(repHer);
-
-        double heridasParaSalvar = heridasAutomaticas;
-        double heridasInsalvables = 0.0;
-
-        if (req.isSeisHeridaInsalvable()) {
-            heridasInsalvables = impactosNormales * probSeisHerida;
-            heridasParaSalvar += impactosNormales * (probHeridaTotal - probSeisHerida);
-        } else {
-            heridasParaSalvar += impactosNormales * probHeridaTotal;
-        }
-
-        // 3. Salvación
-        double probFalloSalvacion = req.getSalvacionX() > 6 ? 1.0 : (req.getSalvacionX() - 1.0) / 6.0;
-        double heridasQuePasan = (heridasParaSalvar * Math.max(0, probFalloSalvacion)) + heridasInsalvables;
-
-        // 4. Daño final
-        int valorDano = req.getDanoPorAtaque() > 0 ? req.getDanoPorAtaque() : 1;
-        double danoTotal = heridasQuePasan * valorDano;
-
-        if (req.getNoHayDolorX() > 0 && req.getNoHayDolorX() <= 6) {
-            double probFalloFNP = (req.getNoHayDolorX() - 1.0) / 6.0;
-            danoTotal *= Math.max(0, probFalloFNP);
-        }
-
-        return danoTotal;
+        int heridas = contarExitos(req.getHerirX(), req.getRepeticionHerir());
+        int devastadoras = req.isSeisHeridaInsalvable()
+            ? contarSeises(req.getHerirX(), req.getRepeticionHerir()) : 0;
+        long paraSalvar = automaticas * 36L + impactos * (long) (heridas - devastadoras);
+        long insalvables = impactos * (long) devastadoras;
+        int falloSalvacion = Math.max(0, Math.min(6, req.getSalvacionX() - 1));
+        int falloFnp = req.getNoHayDolorX() > 0 && req.getNoHayDolorX() <= 6
+            ? req.getNoHayDolorX() - 1 : 6;
+        long numerador = (paraSalvar * falloSalvacion + insalvables * 6)
+            * req.getNumAtaques() * req.getDanoPorAtaque() * falloFnp;
+        // Denominador: 36 impactos * 36 heridas * 6 salvación * 6 FNP.
+        return BigDecimal.valueOf(numerador).divide(BigDecimal.valueOf(46656), 2, RoundingMode.HALF_UP).doubleValue();
     }
 
-    private double calcularProbBase(int umbral) {
-        if (umbral <= 1) return 1.0;
-        if (umbral > 6) return 0.0;
-        return (7.0 - umbral) / 6.0;
+    private int contarExitos(int umbral, String repeticion) {
+        int exitos = 0;
+        for (int primero = 1; primero <= 6; primero++)
+        for (int segundo = 1; segundo <= 6; segundo++) {
+            if (resultadoRepeticion(primero, segundo, umbral, repeticion) >= umbral) exitos++;
+        }
+        return exitos;
     }
 
-    private double calcularProbConRepeticion(double probBase, String repeticion) {
-        if (repeticion == null) return probBase;
-        return switch (repeticion) {
-            case "ONES" -> probBase + (1.0 / 6.0) * probBase;
-            case "ALL" -> 1.0 - Math.pow(1.0 - probBase, 2);
-            default -> probBase;
-        };
+    private int contarSeises(int umbral, String repeticion) {
+        int seises = 0;
+        for (int primero = 1; primero <= 6; primero++)
+        for (int segundo = 1; segundo <= 6; segundo++) {
+            if (resultadoRepeticion(primero, segundo, umbral, repeticion) == 6) seises++;
+        }
+        return seises;
     }
 
-    private double calcularProbSeis(String repeticion) {
-        double base = 1.0 / 6.0;
-        if (repeticion == null) return base;
-        return switch (repeticion) {
-            case "ONES" -> base + (1.0 / 6.0) * base;
-            case "ALL" -> base + (5.0 / 6.0) * base;
-            default -> base;
-        };
+    private int resultadoRepeticion(int primero, int segundo, int umbral, String repeticion) {
+        boolean repetir = ("ONES".equals(repeticion) && primero == 1)
+            || ("ALL".equals(repeticion) && primero < umbral);
+        return repetir ? segundo : primero;
     }
 }

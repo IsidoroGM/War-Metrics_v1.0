@@ -1,62 +1,45 @@
 package proyecto.IM.warMetrics.Proyecto1.Service;
 
-
+import java.util.Locale;
+import java.nio.charset.StandardCharsets;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
+import org.springframework.web.server.ResponseStatusException;
 import proyecto.IM.warMetrics.Proyecto1.dto.RegistroRequest;
 import proyecto.IM.warMetrics.Proyecto1.model.Usuario;
 import proyecto.IM.warMetrics.Proyecto1.repository.UsuarioRepository;
 
 @Service
 public class AuthService {
-    private final UsuarioRepository usuarioRepository;
+    private final UsuarioRepository usuarios;
     private final PasswordEncoder passwordEncoder;
+    private final String dummyPassword;
 
-    // Inyectamos el repositorio y el cifrador
-    public AuthService(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
-        this.usuarioRepository = usuarioRepository;
+    public AuthService(UsuarioRepository usuarios, PasswordEncoder passwordEncoder) {
+        this.usuarios = usuarios;
         this.passwordEncoder = passwordEncoder;
+        this.dummyPassword = passwordEncoder.encode("WarMetrics-placeholder-1!");
     }
 
-    public String registrarUsuario(RegistroRequest request) {
-        // 1. Comprobar si el nombre de usuario ya existe
-        if (usuarioRepository.existsByUsername(request.getUsername())) {
-            return "Error: El nombre de usuario ya está en uso.";
+    public void registrarUsuario(RegistroRequest request) {
+        String username = request.getUsername().trim();
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        if (usuarios.existsByUsername(username) || usuarios.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El usuario o el correo ya están registrados.");
         }
-
-        // 2. Comprobar si el email ya existe
-        if (usuarioRepository.findByEmail(request.getEmail()).isPresent()) {
-            return "Error: El correo electrónico ya está registrado.";
-        }
-
-        // 3. Crear el nuevo usuario y CIFRAR su contraseña
-        Usuario nuevoUsuario = new Usuario();
-        nuevoUsuario.setUsername(request.getUsername());
-        nuevoUsuario.setEmail(request.getEmail());
-        
-        // Aquí usamos BCrypt para convertir la contraseña en un código ilegible
-        String passwordCifrada = passwordEncoder.encode(request.getPassword());
-        nuevoUsuario.setPassword(passwordCifrada);
-
-        // 4. Guardar en la base de datos
-        usuarioRepository.save(nuevoUsuario);
-
-        return "Usuario registrado con éxito.";
+        usuarios.saveAndFlush(new Usuario(username, passwordEncoder.encode(request.getPassword()), email));
     }
- 
-    // Método que asegura que las contraseñas coiniciden.
+
     public Usuario login(String username, String password) {
-        Usuario usuario = usuarioRepository.findByUsername(username)
-            .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-
-        // Comparamos la contraseña escrita con la cifrada de la BBDD
-        if (passwordEncoder.matches(password, usuario.getPassword())) {
-            return usuario;
-        } else {
-            throw new RuntimeException("Contraseña incorrecta");
+        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La contraseña supera el tamaño permitido.");
         }
+        Usuario user = usuarios.findByUsername(username.trim()).orElse(null);
+        boolean matches = passwordEncoder.matches(password, user == null ? dummyPassword : user.getPassword());
+        if (user == null || !matches) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Usuario o contraseña incorrectos.");
+        }
+        return user;
     }
-
-
 }

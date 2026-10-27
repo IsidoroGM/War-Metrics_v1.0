@@ -1,147 +1,136 @@
-// --- VARIABLES GLOBALES DE USUARIO ---
-let usuarioActual = null; 
-const API_BASE = "/api";
-
-// 1. Alternar entre Login y Registro
+let usuarioActual = null;
 let modoRegistro = false;
+let versionSesion = 0;
+
+function enviarFormularioAuth(event) {
+    event.preventDefault();
+    return modoRegistro ? hacerRegistro() : hacerLogin();
+}
+
+document.getElementById('auth-form').addEventListener('submit', enviarFormularioAuth);
+
+function mostrarMensajeAuth(mensaje, error = false) {
+    const box = document.getElementById('auth-mensaje');
+    box.textContent = mensaje;
+    box.style.color = error ? '#ff7373' : 'var(--accent)';
+}
+
 function toggleModoAuth() {
     modoRegistro = !modoRegistro;
-    document.getElementById('campo-email').style.display = modoRegistro ? 'block' : 'none';
-    document.getElementById('btn-login').style.display = modoRegistro ? 'none' : 'block';
-    document.getElementById('btn-registro').style.display = modoRegistro ? 'block' : 'none';
-    document.getElementById('texto-toggle-auth').innerText = modoRegistro ? '¿Ya tienes cuenta? Entra aquí' : '¿No tienes cuenta? Regístrate';
-    document.getElementById('auth-mensaje').innerText = ''; 
+    document.getElementById('campo-email').hidden = !modoRegistro;
+    document.getElementById('auth-email').disabled = !modoRegistro;
+    document.getElementById('btn-login').hidden = modoRegistro;
+    document.getElementById('btn-registro').hidden = !modoRegistro;
+    document.getElementById('auth-password').autocomplete = modoRegistro ? 'new-password' : 'current-password';
+    document.getElementById('texto-toggle-auth').textContent =
+        modoRegistro ? '¿Ya tienes cuenta? Entra aquí' : '¿No tienes cuenta? Regístrate';
+    mostrarMensajeAuth('');
 }
 
-// 2. Hacer Login (VERSIÓN LIMPIA SIN JWT)
 async function hacerLogin() {
-    const user = document.getElementById('auth-username').value;
-    const pass = document.getElementById('auth-password').value;
-    const msj = document.getElementById('auth-mensaje');
-
+    if (!validarCampos(['auth-username', 'auth-password'])) return;
+    const button = document.getElementById('btn-login');
+    if (button.disabled) return;
+    const version = ++versionSesion;
+    button.disabled = true;
     try {
-        const response = await fetch(`${API_BASE}/auth/login`, {
+        const user = await apiRequest('/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user, password: pass })
-        });
-
-        if (response.ok) {
-            usuarioActual = await response.json();
-            
-            // Verificamos que el backend nos ha devuelto al menos el ID y el nombre
-            if(!usuarioActual.id) {
-                throw new Error("El servidor no devolvió un usuario válido.");
+            body: {
+                username: document.getElementById('auth-username').value.trim(),
+                password: document.getElementById('auth-password').value
             }
-            
-            // Guardamos sesión correctamente (ahora solo guardamos ID y Username)
-            localStorage.setItem('warmetrics_user', JSON.stringify(usuarioActual)); 
-            localStorage.setItem('usuarioId', usuarioActual.id); 
-            // ELIMINADO: Ya no guardamos ningún token
-            
-            actualizarInterfazAuth();
-            msj.innerText = '';
-
-            if (typeof gestionarPanelGuardado === 'function') {
-                gestionarPanelGuardado();
-            }
-
-        } else {
-            msj.innerText = "Credenciales incorrectas. Revisa tu usuario/password.";
-        }
-        
-    } catch (e) {
-        console.error(e);
-        msj.innerText = "⚠️ Error: " + e.message;
-    }
-}
-
-// 3. Hacer Registro
-async function hacerRegistro() {
-    const user = document.getElementById('auth-username').value;
-    const pass = document.getElementById('auth-password').value;
-    const email = document.getElementById('auth-email').value;
-    const msj = document.getElementById('auth-mensaje');
-
-    try {
-        const response = await fetch(`${API_BASE}/auth/registro`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user, email: email, password: pass })
         });
-
-        const texto = await response.text();
-        if (response.ok && texto.includes("éxito")) {
-            msj.style.color = "var(--accent)";
-            msj.innerText = "¡Registro exitoso! Ya puedes iniciar sesión.";
-            toggleModoAuth();
-        } else {
-            msj.style.color = "#e74c3c";
-            msj.innerText = texto;
-        }
-    } catch (e) {
-        msj.innerText = "⚠️ Error de conexión con el servidor.";
-    }
-}
-
-// 4. Cerrar Sesión 
-function cerrarSesion() {
-    usuarioActual = null;
-    localStorage.removeItem('warmetrics_user');
-    localStorage.removeItem('usuarioId');
-    localStorage.removeItem('token'); // Lo dejamos por seguridad para borrar rastros de pruebas anteriores
-
-    window.location.reload();
-}
-
-// 5. Actualizar la interfaz 
-function actualizarInterfazAuth() {
-    const authPanel = document.getElementById('auth-panel');
-    const userPanel = document.getElementById('user-panel');
-    const bienvenidaUsuario = document.getElementById('bienvenida-usuario');
-
-    if (usuarioActual) {
-        authPanel.classList.remove('pantalla-activa');
-        authPanel.classList.add('pantalla-oculta');
-        
-        userPanel.classList.remove('pantalla-oculta');
-        userPanel.classList.add('pantalla-activa');
-        
-        if (bienvenidaUsuario) {
-            bienvenidaUsuario.innerText = `Hola, ${usuarioActual.username}`;
-        }
-        
-        if (typeof cargarTarjetasUnidad === 'function') cargarTarjetasUnidad();
-        if (typeof cargarHistorialDefinitivo === 'function') cargarHistorialDefinitivo();
-
-    } else {
-        authPanel.classList.remove('pantalla-oculta');
-        authPanel.classList.add('pantalla-activa');
-        
-        userPanel.classList.remove('pantalla-activa');
-        userPanel.classList.add('pantalla-oculta');
-    }
-}
-
-// 6. Al cargar la página
-document.addEventListener("DOMContentLoaded", () => {
-    const guardado = localStorage.getItem('warmetrics_user');
-    if (guardado) {
-        usuarioActual = JSON.parse(guardado);
+        if (version !== versionSesion) return;
+        usuarioActual = user;
+        reiniciarCsrf();
+        document.getElementById('auth-password').value = '';
+        mostrarMensajeAuth('');
         actualizarInterfazAuth();
+        mostrarNotificacion('Sesión iniciada.');
+    } catch (error) {
+        if (version === versionSesion) mostrarMensajeAuth(error.message, true);
+    } finally {
+        button.disabled = false;
     }
+}
+
+async function hacerRegistro() {
+    if (!validarCampos(['auth-username', 'auth-password', 'auth-email'])) return;
+    const button = document.getElementById('btn-registro');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+        const result = await apiRequest('/auth/registro', {
+            method: 'POST',
+            body: {
+                username: document.getElementById('auth-username').value.trim(),
+                email: document.getElementById('auth-email').value.trim(),
+                password: document.getElementById('auth-password').value
+            }
+        });
+        if (modoRegistro) toggleModoAuth();
+        mostrarMensajeAuth(result.message);
+        document.getElementById('auth-password').value = '';
+    } catch (error) {
+        mostrarMensajeAuth(error.message, true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function cerrarSesion() {
+    ++versionSesion;
+    try {
+        await apiRequest('/auth/logout', { method: 'POST' });
+        invalidarSesion();
+        reiniciarCsrf();
+        mostrarNotificacion('Sesión cerrada.');
+    } catch (error) {
+        mostrarNotificacion(error.message, 'error');
+    }
+}
+
+function invalidarSesion() {
+    ++versionSesion;
+    usuarioActual = null;
+    if (typeof misTarjetasGlobal !== 'undefined') misTarjetasGlobal = [];
+    ['lista-tarjetas-unidad', 'historial-completo'].forEach(id => document.getElementById(id)?.replaceChildren());
+    if (typeof resetearFormularioArmeria === 'function') resetearFormularioArmeria();
+    actualizarInterfazAuth();
+    if (typeof cambiarPantalla === 'function') cambiarPantalla('simulador');
+}
+
+function actualizarInterfazAuth() {
+    const logged = Boolean(usuarioActual);
+    document.getElementById('auth-panel').classList.toggle('pantalla-oculta', logged);
+    document.getElementById('auth-panel').classList.toggle('pantalla-activa', !logged);
+    document.getElementById('user-panel').classList.toggle('pantalla-oculta', !logged);
+    document.getElementById('user-panel').classList.toggle('pantalla-activa', logged);
+    document.getElementById('bienvenida-usuario').textContent = logged ? 'Hola, ' + usuarioActual.username : '';
+    if (typeof gestionarPanelGuardado === 'function') gestionarPanelGuardado();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const version = versionSesion;
+    // Retirar la identidad antigua: solo el servidor decide si hay una sesión válida.
+    try {
+        ['warmetrics_user', 'usuarioId', 'token'].forEach(key => localStorage.removeItem(key));
+    } catch { /* Las cookies de sesión funcionan aunque el almacenamiento esté bloqueado. */ }
+    try {
+        const user = await apiRequest('/auth/me');
+        if (version !== versionSesion) return;
+        usuarioActual = user;
+    } catch (error) {
+        if (version !== versionSesion) return;
+        usuarioActual = null;
+        if (error.status !== 401) mostrarNotificacion(error.message, 'error');
+    }
+    actualizarInterfazAuth();
 });
 
-// --- VISIBILIDAD DE CONTRASEÑA ---
 function togglePasswordVisibility() {
-    const passInput = document.getElementById('auth-password');
-    const eyeIcon = document.getElementById('toggle-eye');
-    
-    if (passInput.type === 'password') {
-        passInput.type = 'text';
-        eyeIcon.innerText = '🙈';
-    } else {
-        passInput.type = 'password';
-        eyeIcon.innerText = '👁️';
-    }
+    const input = document.getElementById('auth-password');
+    input.type = input.type === 'password' ? 'text' : 'password';
+    document.getElementById('toggle-eye').textContent = input.type === 'password' ? '👁️' : '🙈';
 }
