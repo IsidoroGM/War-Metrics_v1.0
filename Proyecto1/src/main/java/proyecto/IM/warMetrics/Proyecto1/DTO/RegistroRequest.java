@@ -9,11 +9,13 @@ public class RegistroRequest {
 
     @NotBlank(message = "El nombre de usuario no puede estar vacío")
     @Size(min = 3, max = 20, message = "El usuario debe tener entre 3 y 20 caracteres")
+    @Pattern(regexp = "[A-Za-z0-9_-]+", message = "Usa letras sin acentos, números, guion o guion bajo para el usuario.")
     private String username;
 
     // Aquí está la validación automática de correo (@ y .)
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "El formato del correo electrónico no es válido")
+    @Size(max = 254, message = "El correo es demasiado largo.")
     private String email;
 
     // Aquí está tu regla matemática (Regex) para la contraseña
@@ -22,6 +24,7 @@ public class RegistroRequest {
         regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$", 
         message = "La contraseña debe tener mínimo 8 caracteres, una mayúscula, un número y un símbolo especial"
     )
+    @Size(max = 72, message = "La contraseña admite hasta 72 caracteres.")
     private String password;
 
     // Getters y Setters

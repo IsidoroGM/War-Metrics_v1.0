@@ -1,0 +1,77 @@
+name: Verificar WarMetrics
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: Proyecto1/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Backend
+        run: mvn -B -ntp -f Proyecto1/pom.xml verify
+      - name: Frontend
+        run: node --test tests/frontend.test.cjs
+  postgres:
+    needs: verify
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: warmetrics_test
+          POSTGRES_USER: warmetrics_ci
+          POSTGRES_PASSWORD: warmetrics-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U warmetrics_ci -d warmetrics_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PG_TEST_URL: jdbc:postgresql://localhost:5432/warmetrics_test
+      PG_TEST_USERNAME: warmetrics_ci
+      PG_TEST_PASSWORD: warmetrics-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: Proyecto1/pom.xml
+      - name: API y persistencia sobre PostgreSQL real
+        run: mvn -B -ntp -f Proyecto1/pom.xml -Dtest=PostgresIntegrationTest,PostgresRestartPersistenceTest test
+  container:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Construir imagen con Java 21 y ejecutar las pruebas Maven
+        run: docker build -t warmetrics:verify .
+      - name: Comprobar el contenedor
+        shell: bash
+        run: |
+          trap 'docker logs warmetrics-verify; docker rm -f warmetrics-verify >/dev/null' EXIT
+          docker run --detach --name warmetrics-verify \
+            --publish 127.0.0.1:8080:8080 \
+            --env DB_URL=jdbc:h2:mem:container-smoke \
+            warmetrics:verify
+          node tests/smoke-deployment.cjs http://127.0.0.1:8080 --wait

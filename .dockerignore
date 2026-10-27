@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+**/.vscode
+**/target
+**/runtime-data
+**/data
+**/*.db
+**/*.log
+.env
+.env.*

@@ -1,10 +1,11 @@
 package proyecto.IM.warMetrics.Proyecto1.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public class LoginRequest {
-    @NotBlank private String username;
-    @NotBlank private String password;
+    @NotBlank @Size(max = 20) private String username;
+    @NotBlank @Size(max = 72) private String password;
 
     // Getters y Setters
     public String getUsername() {

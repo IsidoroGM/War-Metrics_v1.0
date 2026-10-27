@@ -1,0 +1,6 @@
+# Datos y registros generados durante la ejecución local
+runtime-data/
+*.log
+.env
+.env.*
+!.env.example

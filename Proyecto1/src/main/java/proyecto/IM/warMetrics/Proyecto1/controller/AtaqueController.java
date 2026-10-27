@@ -1,6 +1,6 @@
 package proyecto.IM.warMetrics.Proyecto1.controller;
 
-import org.springframework.web.bind.annotation.CrossOrigin;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,7 +15,7 @@ import proyecto.IM.warMetrics.Proyecto1.dto.ResultadoResponse;
 @RestController 
 @RequestMapping("/api/v1/combate")
 // Permitimos que una web externa o local pueda llamar a este controlador
-@CrossOrigin(origins = "*")
+
 
 public class AtaqueController {
 
@@ -37,7 +37,7 @@ public class AtaqueController {
     // Ruta completa: http://localhost:8080/api/v1/combate/simular
 
     @PostMapping("/simular")
-    public ResultadoResponse simularAtaque(@RequestBody AtaqueRequest request) {
+    public ResultadoResponse simularAtaque(@Valid @RequestBody AtaqueRequest request) {
         // Ahora devolvemos directamente el objeto con los dos cálculos
         return simuladorService.ejecutarSimulacion(request);
     }
