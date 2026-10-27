@@ -81,5 +81,7 @@ Verificación: 16 pruebas de backend y 18 de frontend correctas. Los nuevos caso
 - Servicio War-Metrics, plan Free, Docker; rama vinculada Despliegue-en-Render y commit desplegado b6d9182.
 - El servicio sigue ejecutando la versión anterior, con H2 en memoria y sin comprobación HTTP de salud configurada.
 - El usuario ha elegido mantener Render Free, usar una base PostgreSQL externa gratuita y empezar con una base nueva; los datos anteriores son de prueba y no se migrarán.
-- Se ha incorporado el controlador PostgreSQL, un perfil render con conexión TLS obligatoria y pruebas de API/persistencia con PostgreSQL real en GitHub Actions. Falta provisionar la base en la cuenta de Neon y conectar las variables de Render.
+- Se ha incorporado el controlador PostgreSQL y un perfil render con conexión TLS obligatoria. Los trabajos de Java 21, Docker y las ocho pruebas adicionales de API/persistencia sobre PostgreSQL 16 han pasado en GitHub Actions.
+- El proyecto WarMetrics ya está creado en Neon Free, en AWS Ohio, con una base nueva. Pendiente conectar las variables del servicio Render y desplegar la versión integrada.
+- Los sondeos de salud de Render no consultan PostgreSQL para permitir la suspensión por inactividad de Neon; la conexión de datos se comprueba por separado mediante los flujos de API.
 - La configuración y el procedimiento se detallan en [DESPLIEGUE_RENDER.md](DESPLIEGUE_RENDER.md).
