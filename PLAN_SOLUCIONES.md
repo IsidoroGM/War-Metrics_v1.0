@@ -8,7 +8,7 @@ Estado inicial: revisión del commit b6d9182. Correcciones implementadas sobre l
 | 2 | H2 persistente y configuración de pruebas independiente | Un reinicio conserva usuarios, tarjetas e historial | Aplicado y probado |
 | 3 | Probabilidades, validación y respuestas de error | Casos de regresión correctos; entradas inválidas devuelven 400 y duplicados 409 | Aplicado y probado |
 | 4 | Renderizado seguro, edición de tarjetas y mensajes | Sin interpolar texto de usuario como HTML; edición accesible; mensajes visibles | Aplicado y probado |
-| 5 | Instalación, Docker y comprobaciones finales | Compilación y pruebas correctas; instrucciones reproducibles | Aplicado; Docker pendiente de ejecutar |
+| 5 | Instalación, Docker y comprobaciones finales | Compilación y pruebas correctas; instrucciones reproducibles | Aplicado; Java 21 y Docker validados en GitHub Actions |
 
 ## Decisiones
 
@@ -28,7 +28,7 @@ Estado inicial: revisión del commit b6d9182. Correcciones implementadas sobre l
 4. Pruebas del frontend para renderizado seguro, edición, sesión y mensajes.
 5. Compilación Maven y revisión del diff. Docker se comprobará si el entorno dispone de su motor.
 
-El error exacto de la captura requiere la excepción del backend desplegado. Se ha corregido el tratamiento de errores y añadido una referencia para localizarla.
+Los logs de Render del 27 de octubre de 2026 a las 12:25:39 UTC confirman que el error de la captura fue una violación de unicidad del correo (SQLState 23505). La corrección devuelve HTTP 409 en ese caso, incluso si el conflicto alcanza la base de datos.
 
 ## Resultado de la implementación
 
@@ -50,7 +50,7 @@ Los 11 problemas del análisis tienen una corrección local:
 
 ### Verificación realizada
 
-- Maven verify: BUILD SUCCESS. 15 pruebas de backend, sin fallos ni errores.
+- Maven verify: BUILD SUCCESS. 16 pruebas de backend, sin fallos ni errores.
 - Una de las pruebas recorre 11.664 combinaciones de umbrales, repeticiones, reglas y salvaciones.
 - Persistencia: dos arranques independientes sobre una base temporal conservan usuario, contraseña BCrypt, tarjeta e historial.
 - Node: 18 pruebas de frontend correctas, sin paquetes externos.
@@ -58,9 +58,9 @@ Los 11 problemas del análisis tienen una corrección local:
 - Etiquetas HTML de prueba visibles como texto literal en la interfaz.
 - Dockerfile actualizado para ejecutar las pruebas Maven; workflow de GitHub Actions añadido para Java 21 y Node 22.
 
-La verificación local se ejecutó con JDK 25.0.2 compilando para Java 21. El motor Docker no está disponible; la imagen y el workflow de GitHub quedan pendientes de ejecución en sus respectivos entornos.
+La verificación local se ejecutó con JDK 25.0.2 compilando para Java 21. GitHub Actions también ha completado correctamente los trabajos con Java 21 y la construcción y comprobación del contenedor Docker. Los resultados pueden consultarse en la [PR #2](https://github.com/IsidoroGM/War-Metrics_v1.0/pull/2).
 
-Los cambios no se han publicado ni desplegado. Las bases antiguas versionadas no se han modificado. El error 500 original del servidor desplegado no puede atribuirse a una excepción concreta sin su log; ahora el cliente evita mostrar JSON crudo y los nuevos errores internos generan una referencia de diagnóstico.
+Los cambios están publicados en la rama codex/fix-web-render y en la PR #2; todavía no se han desplegado en Render. Las bases antiguas versionadas no se han modificado. El cliente evita mostrar JSON crudo y los nuevos errores internos generan una referencia de diagnóstico.
 
 El diseño de sesión y CSRF se contrastó con la documentación de [sesiones de Spring Security](https://docs.spring.io/spring-security/reference/7.0/servlet/authentication/session-management.html) y [protección CSRF](https://docs.spring.io/spring-security/reference/7.0/servlet/exploits/csrf.html).
 
@@ -74,4 +74,11 @@ Se reprodujeron y corrigieron estos casos adicionales:
 - El JSON aceptaba decimales en campos enteros y los truncaba silenciosamente. Se ha desactivado esa conversión: cantidades y umbrales decimales devuelven HTTP 400.
 - Pulsar Enter en acceso o registro no enviaba el formulario. Ahora utiliza un formulario nativo y el correo oculto queda desactivado durante el login.
 
-Verificación: 15 pruebas de backend y 18 de frontend correctas. Los nuevos casos fallaron antes de aplicar sus correcciones. Registro e inicio de sesión mediante Enter comprobados también en navegador con una cuenta ficticia y base en memoria. El servidor temporal se cierra al terminar la comprobación.
+Verificación: 16 pruebas de backend y 18 de frontend correctas. Los nuevos casos fallaron antes de aplicar sus correcciones. Registro e inicio de sesión mediante Enter comprobados también en navegador con una cuenta ficticia y base en memoria. Se añadió una regresión específica para correo duplicado y conflicto de unicidad en la base de datos. El servidor temporal se cierra al terminar la comprobación.
+
+## Estado de Render
+
+- Servicio War-Metrics, plan Free, Docker; rama vinculada Despliegue-en-Render y commit desplegado b6d9182.
+- El servicio sigue ejecutando la versión anterior, con H2 en memoria y sin comprobación HTTP de salud configurada.
+- El plan Free no permite discos persistentes. El despliegue está pendiente de elegir entre mantener el servicio gratuito con una base externa o usar un plan con disco para H2.
+- La configuración y el procedimiento se detallan en [DESPLIEGUE_RENDER.md](DESPLIEGUE_RENDER.md).

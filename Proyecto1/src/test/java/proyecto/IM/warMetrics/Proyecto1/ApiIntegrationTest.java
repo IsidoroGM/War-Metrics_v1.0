@@ -167,6 +167,11 @@ class ApiIntegrationTest {
             Map.of("username", name, "email", name + "@example.test", "password", "AuditPass1!"));
         assertEquals(409, duplicate.status());
         assertFalse(duplicate.body().path("message").asText().isBlank());
+        String anotherName = "u" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        var duplicateEmail = client.call("POST", "/api/auth/registro",
+            Map.of("username", anotherName, "email", name.toUpperCase() + "@EXAMPLE.TEST", "password", "AuditPass1!"));
+        assertEquals(409, duplicateEmail.status());
+        assertEquals("El usuario o el correo ya están registrados.", duplicateEmail.body().path("message").asText());
         var missing = client.call("POST", "/api/auth/login", Map.of("username", "nonexistent", "password", "Wrong1!"));
         var wrong = client.call("POST", "/api/auth/login", Map.of("username", name, "password", "Wrong1!"));
         assertEquals(401, missing.status());

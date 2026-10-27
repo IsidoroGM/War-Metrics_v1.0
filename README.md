@@ -92,7 +92,7 @@ node --test tests/frontend.test.cjs
 
 O usar el wrapper desde `Proyecto1`: `sh mvnw verify` en Linux/macOS o `.\mvnw.cmd verify` en Windows.
 
-La suite comprueba cálculo, validación, sesión, CSRF, aislamiento entre cuentas, errores, persistencia tras reinicio y comportamiento del frontend. GitHub Actions ejecuta las comprobaciones con Java 21 y Node 22.
+La suite comprueba cálculo, validación, sesión, CSRF, aislamiento entre cuentas, errores, persistencia tras reinicio y comportamiento del frontend. GitHub Actions ejecuta las comprobaciones con Java 21 y Node 22, además de construir y arrancar el contenedor.
 
 ## Docker
 
@@ -106,5 +106,7 @@ La construcción ejecuta las pruebas Maven. El volumen conserva los datos al rec
 ## Plan de correcciones
 
 El estado y la verificación de los problemas detectados se documentan en [PLAN_SOLUCIONES.md](PLAN_SOLUCIONES.md).
+
+La preparación y los requisitos del servicio actual están en [DESPLIEGUE_RENDER.md](DESPLIEGUE_RENDER.md).
 
 Autor: Isidoro Gordillo.
