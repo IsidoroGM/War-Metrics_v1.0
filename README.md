@@ -2,7 +2,7 @@
 
 Aplicación web para simular tiradas y calcular medias de daño, con armería e historial por usuario.
 
-**Tecnologías:** Java 21, Spring Boot 4.0.2, Maven, Spring Security, Spring Data JPA, H2 y JavaScript sin framework.
+**Tecnologías:** Java 21, Spring Boot 4.0.2, Maven, Spring Security, Spring Data JPA, PostgreSQL/H2 y JavaScript sin framework.
 
 ## Inicio local
 
@@ -39,6 +39,12 @@ La carpeta `runtime-data/` está excluida de Git. Las bases antiguas de `data/` 
 | SESSION_COOKIE_SECURE | false | Usar true cuando la web se sirve mediante HTTPS |
 
 Los tests usan una base independiente en memoria. La prueba de reinicio utiliza archivos temporales.
+
+### Render gratuito con PostgreSQL externo
+
+Activar el perfil con `SPRING_PROFILES_ACTIVE=render` y configurar `DB_URL`, `DB_USERNAME` y `DB_PASSWORD` en Render. El perfil exige estas variables y utiliza PostgreSQL con TLS; no requiere un disco del servicio. La URL debe tener formato JDBC, por ejemplo `jdbc:postgresql://HOST_NEON/neondb?sslmode=require&channelBinding=require`, con usuario y contraseña en variables separadas.
+
+El pool se limita a tres conexiones y permite cerrar las conexiones ociosas. La configuración de referencia está en `.env.example`; Spring no carga ese archivo automáticamente. Las instrucciones del servicio están en [DESPLIEGUE_RENDER.md](DESPLIEGUE_RENDER.md).
 
 ## Cuentas y seguridad
 
@@ -92,7 +98,9 @@ node --test tests/frontend.test.cjs
 
 O usar el wrapper desde `Proyecto1`: `sh mvnw verify` en Linux/macOS o `.\mvnw.cmd verify` en Windows.
 
-La suite comprueba cálculo, validación, sesión, CSRF, aislamiento entre cuentas, errores, persistencia tras reinicio y comportamiento del frontend. GitHub Actions ejecuta las comprobaciones con Java 21 y Node 22, además de construir y arrancar el contenedor.
+La suite comprueba cálculo, validación, sesión, CSRF, aislamiento entre cuentas, errores, persistencia tras reinicio y comportamiento del frontend. GitHub Actions ejecuta las comprobaciones con Java 21 y Node 22, construye y arranca el contenedor y repite la API y la persistencia con PostgreSQL 16 real.
+
+Las pruebas PostgreSQL se omiten localmente si no existe la base desechable de CI. Solo se habilitan si `PG_TEST_URL` apunta a localhost/127.0.0.1 y a una base llamada `warmetrics_test`; sus credenciales se indican en `PG_TEST_USERNAME` y `PG_TEST_PASSWORD`.
 
 ## Docker
 

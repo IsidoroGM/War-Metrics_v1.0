@@ -16,7 +16,7 @@ Estado inicial: revisión del commit b6d9182. Correcciones implementadas sobre l
 - CSRF activo para las operaciones que modifican datos, incluidos registro, login y logout.
 - El simulador seguirá disponible sin iniciar sesión; guardar tarjetas e historial requerirá una sesión válida.
 - Desarrollo desde el propio servidor Spring Boot. El frontend y la API compartirán origen.
-- Persistencia por defecto en una carpeta nueva `runtime-data/`, para no abrir ni modificar las bases antiguas versionadas. En Docker se montará esa carpeta como volumen.
+- Persistencia local en `runtime-data/`, sin modificar las bases antiguas versionadas. En Render Free se utilizará PostgreSQL externo mediante el perfil render.
 - Las pruebas usarán H2 en memoria y no tocarán datos reales.
 - Los errores internos devolverán un mensaje comprensible y una referencia; la excepción completa permanecerá en el registro del servidor.
 
@@ -80,5 +80,6 @@ Verificación: 16 pruebas de backend y 18 de frontend correctas. Los nuevos caso
 
 - Servicio War-Metrics, plan Free, Docker; rama vinculada Despliegue-en-Render y commit desplegado b6d9182.
 - El servicio sigue ejecutando la versión anterior, con H2 en memoria y sin comprobación HTTP de salud configurada.
-- El plan Free no permite discos persistentes. El despliegue está pendiente de elegir entre mantener el servicio gratuito con una base externa o usar un plan con disco para H2.
+- El usuario ha elegido mantener Render Free, usar una base PostgreSQL externa gratuita y empezar con una base nueva; los datos anteriores son de prueba y no se migrarán.
+- Se ha incorporado el controlador PostgreSQL, un perfil render con conexión TLS obligatoria y pruebas de API/persistencia con PostgreSQL real en GitHub Actions. Falta provisionar la base en la cuenta de Neon y conectar las variables de Render.
 - La configuración y el procedimiento se detallan en [DESPLIEGUE_RENDER.md](DESPLIEGUE_RENDER.md).

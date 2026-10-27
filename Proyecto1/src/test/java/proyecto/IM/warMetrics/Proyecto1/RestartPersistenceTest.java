@@ -2,6 +2,7 @@ package proyecto.IM.warMetrics.Proyecto1;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -14,16 +15,26 @@ class RestartPersistenceTest {
     @TempDir Path temp;
 
     private ConfigurableApplicationContext start(String database) {
-        return new SpringApplicationBuilder(Proyecto1Application.class).run(
+        String[] options = {
             "--server.port=0", "--spring.datasource.url=" + database,
             "--spring.jpa.hibernate.ddl-auto=update", "--spring.main.banner-mode=off",
-            "--logging.level.root=WARN");
+            "--logging.level.root=WARN"};
+        return new SpringApplicationBuilder(Proyecto1Application.class).run(
+            Stream.concat(Stream.of(options), Stream.of(connectionOptions())).toArray(String[]::new));
+    }
+
+    protected String[] connectionOptions() {
+        return new String[0];
+    }
+
+    protected String databaseUrl() {
+        return "jdbc:h2:file:" + temp.resolve("persistencia").toAbsolutePath().toString().replace('\\', '/')
+            + ";DB_CLOSE_ON_EXIT=FALSE";
     }
 
     @Test
     void usuariosTarjetasEHistorialSobrevivenAlReinicio() {
-        String database = "jdbc:h2:file:" + temp.resolve("persistencia").toAbsolutePath().toString().replace('\\', '/')
-            + ";DB_CLOSE_ON_EXIT=FALSE";
+        String database = databaseUrl();
         Long userId;
         try (var first = start(database)) {
             var usuarios = first.getBean(UsuarioRepository.class);
